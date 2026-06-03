@@ -84,6 +84,13 @@ step. **Why:** satisfies "Terraform also via CICD", keeps infra reproducible and
 state shared (GCS, locked), while isolating the dangerous project-lifecycle
 resource. **Trade-off:** `roles/owner` on the TF SA is broad — acceptable for a
 dedicated demo project; curate or use project-per-env otherwise.
+**Gotcha (cost 3 CI cycles):** a non-user principal (the TF SA) needs BOTH
+`cloudresourcemanager.googleapis.com` and `serviceusage.googleapis.com` enabled
+on the project to read project/IAM and list services — user creds get a grace
+that SAs don't, so "works locally, 403 in CI". Both are now in the managed
+services list. Debug trick: `GOOGLE_IMPERSONATE_SERVICE_ACCOUNT=<tf-sa>
+terraform plan` reproduces the CI identity locally (needs
+`roles/iam.serviceAccountTokenCreator` on the SA).
 
 ## ADR-008 — uv for Python toolchain
 **Decision:** Manage the Python environment with `uv` (`pyproject.toml` +
