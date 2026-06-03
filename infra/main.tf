@@ -16,15 +16,16 @@ resource "google_project" "this" {
 # without a separate enablement step.
 locals {
   services = [
-    "run.googleapis.com",              # Cloud Run            (F6)
-    "aiplatform.googleapis.com",       # Vertex AI + Agent Engine (F1, F3)
-    "firestore.googleapis.com",        # Firestore            (F2)
-    "artifactregistry.googleapis.com", # container images  (F6)
-    "iamcredentials.googleapis.com",   # Workload Identity Federation (F6)
-    "cloudbuild.googleapis.com",       # image builds         (F6)
-    "storage.googleapis.com",          # GCS (Terraform remote state)
-    "iam.googleapis.com",              # service accounts            (F6)
-    "sts.googleapis.com",              # WIF token exchange          (F6)
+    "cloudresourcemanager.googleapis.com", # CRM — required for project/IAM reads (esp. by the TF SA in CICD)
+    "run.googleapis.com",                  # Cloud Run            (F6)
+    "aiplatform.googleapis.com",           # Vertex AI + Agent Engine (F1, F3)
+    "firestore.googleapis.com",            # Firestore            (F2)
+    "artifactregistry.googleapis.com",     # container images  (F6)
+    "iamcredentials.googleapis.com",       # Workload Identity Federation (F6)
+    "cloudbuild.googleapis.com",           # image builds         (F6)
+    "storage.googleapis.com",              # GCS (Terraform remote state)
+    "iam.googleapis.com",                  # service accounts            (F6)
+    "sts.googleapis.com",                  # WIF token exchange          (F6)
   ]
 }
 
