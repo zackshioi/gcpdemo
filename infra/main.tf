@@ -18,7 +18,10 @@ resource "google_project" "this" {
 # few minutes to propagate before plan/apply succeeds).
 locals {
   services = [
-    "cloudresourcemanager.googleapis.com", # CRM — required for project/IAM reads (esp. by the TF SA in CICD)
+    # Bootstrap "meta" APIs the terraform SA needs in CICD (a non-user principal
+    # must have BOTH enabled on the project to read project/IAM + list services):
+    "cloudresourcemanager.googleapis.com", # read project + IAM policy
+    "serviceusage.googleapis.com",         # list/enable project services
     "run.googleapis.com",                  # Cloud Run            (F6)
     "aiplatform.googleapis.com",           # Vertex AI + Agent Engine (F1, F3)
     "firestore.googleapis.com",            # Firestore            (F2)
