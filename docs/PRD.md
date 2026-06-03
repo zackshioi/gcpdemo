@@ -80,7 +80,7 @@ EXPLICIT_INSTRUCTIONS) and we retrieve by the same scope.
 | Method | Path | Purpose |
 |---|---|---|
 | GET  | `/`                          | serve `index.html` |
-| GET  | `/healthz`                   | liveness for Cloud Run + CICD gate |
+| GET  | `/health`                    | liveness (NOT `/healthz`: GFE intercepts it on *.run.app) |
 | POST | `/chat`                      | `{user_id, session_id, message}` -> `{reply}` |
 | GET  | `/sessions/{session_id}`     | session history (short-term proof) |
 | GET  | `/debug/memories?user_id=X`  | list all Memory Bank memories for a user |

@@ -34,9 +34,10 @@ class HistoryResponse(BaseModel):
     messages: list[dict]
 
 
-@app.get("/healthz")
-def healthz() -> dict[str, str]:
-    """Liveness probe. Used by Cloud Run and, later, the CICD deploy gate."""
+@app.get("/health")
+def health() -> dict[str, str]:
+    """Liveness probe. NOTE: not `/healthz` — Google's Front End intercepts
+    `/healthz` on *.run.app and never forwards it to the container."""
     return {"status": "ok"}
 
 

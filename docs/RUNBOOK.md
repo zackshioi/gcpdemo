@@ -16,7 +16,7 @@ export GCP_PROJECT=gcpdemo-zackshioi GCP_LOCATION=us-central1
 uv run uvicorn app.main:app --reload --port 8080
 
 # verify
-curl localhost:8080/healthz        # -> {"status":"ok"}
+curl localhost:8080/health         # -> {"status":"ok"}  (NOT /healthz; GFE reserves it)
 curl -X POST localhost:8080/chat -H 'Content-Type: application/json' \
      -d '{"message":"hi"}'         # -> {"reply":"..."}  (real Gemini)
 open http://localhost:8080/         # the UI
@@ -30,7 +30,7 @@ Add a dependency: `uv add <pkg>` (updates pyproject.toml + uv.lock).
 ```bash
 docker build -t memorychat .
 docker run -p 8080:8080 memorychat
-curl localhost:8080/healthz
+curl localhost:8080/health
 ```
 
 ## GCP infra (Terraform)

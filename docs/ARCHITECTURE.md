@@ -41,7 +41,8 @@
 
 ## Current lifecycle (F2)
 - `GET /` -> serves `static/index.html` (chat UI with session sidebar).
-- `GET /healthz` -> `{"status": "ok"}` (Cloud Run liveness + CICD gate).
+- `GET /health` -> `{"status": "ok"}` (liveness; NOT `/healthz` — Google's
+  Front End intercepts `/healthz` on *.run.app).
 - `POST /chat` `{session_id, message}` -> `{reply}`: persist user turn ->
   load full session history from Firestore -> `gemini.generate(history)`
   (multi-turn) -> persist model turn. Errors surface as HTTP 502.

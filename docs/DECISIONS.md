@@ -64,6 +64,13 @@ SAs: `memorychat-run` (runtime: Vertex + Firestore, no deploy) and
 plane). **Trade-off:** the service is first created with a placeholder image
 that the first CICD run replaces.
 
+## ADR-012 — Health endpoint is `/health`, not `/healthz`
+**Decision:** Name the liveness endpoint `/health`. **Why:** Google's Front End
+intercepts `/healthz` on `*.run.app` and returns its own 404 — the request
+never reaches the container (verified: `/health`, `/livez`, `/ping` all reach
+the app; only `/healthz` is swallowed). Cost us one debugging cycle; documented
+so it isn't reintroduced.
+
 ## ADR-008 — uv for Python toolchain
 **Decision:** Manage the Python environment with `uv` (`pyproject.toml` +
 `uv.lock`), not pip/venv or requirements.txt. **Why:** fast, reproducible
