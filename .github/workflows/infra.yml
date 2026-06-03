@@ -1,0 +1,43 @@
+name: infra
+
+# Apply Terraform on every push to main that touches infra/.
+# Keyless auth via WIF, impersonating the dedicated `terraform` SA.
+# State is the shared GCS backend (with locking), so this and local runs agree.
+on:
+  push:
+    branches: [main]
+    paths: ['infra/**', '.github/workflows/infra.yml']
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write # mint OIDC token for WIF
+
+# project/region as TF_VAR_*; create_project stays false (project is
+# bootstrapped out-of-band and not TF-managed — see docs/DECISIONS.md ADR-013).
+env:
+  TF_VAR_project_id: gcpdemo-zackshioi
+  TF_VAR_region: us-central1
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/1079899377320/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+          service_account: terraform@gcpdemo-zackshioi.iam.gserviceaccount.com
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - run: terraform init
+      - run: terraform plan -input=false
+      - run: terraform apply -auto-approve -input=false

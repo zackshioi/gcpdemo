@@ -35,9 +35,19 @@ resource "google_iam_workload_identity_pool_provider" "github" {
   attribute_condition = "assertion.repository == '${var.github_repo}'"
 }
 
-# Let identities from our repo impersonate the deployer SA.
+# Let identities from our repo impersonate the deploy + terraform SAs.
+locals {
+  wif_repo_principal = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.github_repo}"
+}
+
 resource "google_service_account_iam_member" "wif_impersonate_deployer" {
   service_account_id = google_service_account.github_deployer.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.github_repo}"
+  member             = local.wif_repo_principal
+}
+
+resource "google_service_account_iam_member" "wif_impersonate_terraform" {
+  service_account_id = google_service_account.terraform.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = local.wif_repo_principal
 }

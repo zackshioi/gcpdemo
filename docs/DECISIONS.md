@@ -71,6 +71,20 @@ never reaches the container (verified: `/health`, `/livez`, `/ping` all reach
 the app; only `/healthz` is swallowed). Cost us one debugging cycle; documented
 so it isn't reintroduced.
 
+## ADR-013 — Terraform in CICD (separate pipeline + SA; project out of state)
+**Decision:** A second workflow `infra.yml` runs `terraform plan/apply` on
+pushes touching `infra/`, authenticating via WIF as a dedicated `terraform` SA
+(roles/owner on this single-purpose project). `deploy.yml` is scoped to code
+paths. The two never touch the same thing: the Cloud Run resource `ignore_changes`
+its `image` and service-level `scaling`, which the deploy pipeline owns.
+**Project bootstrap removed from state:** `google_project`/billing were
+`terraform state rm`'d and `create_project` is `false` everywhere, so CICD can
+never plan to destroy the project — bootstrap stays a one-time, out-of-band
+step. **Why:** satisfies "Terraform also via CICD", keeps infra reproducible and
+state shared (GCS, locked), while isolating the dangerous project-lifecycle
+resource. **Trade-off:** `roles/owner` on the TF SA is broad — acceptable for a
+dedicated demo project; curate or use project-per-env otherwise.
+
 ## ADR-008 — uv for Python toolchain
 **Decision:** Manage the Python environment with `uv` (`pyproject.toml` +
 `uv.lock`), not pip/venv or requirements.txt. **Why:** fast, reproducible

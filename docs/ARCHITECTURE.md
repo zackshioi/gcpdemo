@@ -12,7 +12,7 @@
 | Short-term memory | Firestore (Native) | us-central1 | F2 (done) |
 | Long-term memory | Agent Engine — Memory Bank | us-central1 | F3 |
 | Tracing | Self-hosted Langfuse | — | F5 |
-| CICD | GitHub Actions + WIF | — | F6 (done, brought forward) |
+| CICD | GitHub Actions + WIF: `infra.yml` (terraform) + `deploy.yml` (build/deploy) | — | F6 (done, brought forward) |
 | Hosting | Cloud Run `memorychat` (public) | us-central1 | F6 (done) |
 
 ## Toolchain

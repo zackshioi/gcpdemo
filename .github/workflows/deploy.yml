@@ -5,6 +5,8 @@ name: deploy
 on:
   push:
     branches: [main]
+    # Only redeploy the app on code changes; infra changes go through infra.yml.
+    paths: ['app/**', 'Dockerfile', 'pyproject.toml', 'uv.lock', '.github/workflows/deploy.yml']
   workflow_dispatch: {}
 
 permissions:

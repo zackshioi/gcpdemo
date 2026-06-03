@@ -36,7 +36,10 @@ resource "google_cloud_run_v2_service" "app" {
   }
 
   lifecycle {
-    ignore_changes = [template[0].containers[0].image]
+    # CICD (`gcloud run deploy`) owns the image and may set a service-level
+    # scaling block; ignore both so the infra pipeline and the deploy pipeline
+    # don't fight over the same service.
+    ignore_changes = [template[0].containers[0].image, scaling]
   }
 
   depends_on = [google_project_service.enabled]

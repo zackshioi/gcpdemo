@@ -48,3 +48,20 @@ resource "google_service_account_iam_member" "deployer_actas_runtime" {
   role               = "roles/iam.serviceAccountUser"
   member             = "serviceAccount:${google_service_account.github_deployer.email}"
 }
+
+# --- Terraform identity (what the infra CICD pipeline uses) -----------------
+# TF manages everything in this project (APIs, IAM, SAs, WIF, Firestore, AR,
+# Cloud Run, state bucket), so it is the project's IaC owner. This is a
+# dedicated single-purpose demo project — in a shared/prod project you would
+# curate roles or use a project-per-env instead of roles/owner.
+resource "google_service_account" "terraform" {
+  project      = var.project_id
+  account_id   = "terraform"
+  display_name = "Terraform CICD (WIF)"
+}
+
+resource "google_project_iam_member" "terraform_owner" {
+  project = var.project_id
+  role    = "roles/owner"
+  member  = "serviceAccount:${google_service_account.terraform.email}"
+}

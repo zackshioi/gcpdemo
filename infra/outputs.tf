@@ -16,7 +16,12 @@ output "wif_provider" {
 
 output "deployer_sa" {
   value       = google_service_account.github_deployer.email
-  description = "Service account GitHub Actions impersonates."
+  description = "Service account the app-deploy workflow impersonates."
+}
+
+output "terraform_sa" {
+  value       = google_service_account.terraform.email
+  description = "Service account the infra (terraform) workflow impersonates."
 }
 
 output "artifact_repo" {

@@ -71,10 +71,14 @@ Infra is built up incrementally, mirroring the app:
 - **F6 (done, brought forward)**: Artifact Registry, Cloud Run service
   (`memorychat`, public), runtime + deployer SAs, WIF pool/provider.
 
-## Deploy (CICD)
-Push to `main` -> GitHub Actions (`.github/workflows/deploy.yml`) authenticates
-via WIF (keyless), builds the image, pushes to Artifact Registry, and updates
-the Cloud Run service image. No manual deploy needed.
+## Deploy (CICD) — two pipelines
+Two keyless (WIF) workflows, scoped by path so they don't overlap:
+- **`infra.yml`** (changes under `infra/`): `terraform plan/apply` as the
+  `terraform` SA, against the shared GCS state. Project bootstrap is NOT managed
+  here (removed from state; `create_project=false`) so it can never be destroyed.
+- **`deploy.yml`** (changes under `app/`, `Dockerfile`, deps): build image ->
+  push to Artifact Registry -> `gcloud run deploy` as the `github-deployer` SA.
+  Terraform owns the rest of the service (it `ignore_changes` image + scaling).
 
 - Live URL: **https://memorychat-gjs22qk5cq-uc.a.run.app**
 - Manual trigger: GitHub Actions -> "deploy" -> Run workflow (`workflow_dispatch`).
