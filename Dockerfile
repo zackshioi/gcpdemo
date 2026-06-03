@@ -1,5 +1,7 @@
 # Minimal image for Cloud Run. Cloud Run injects $PORT (defaults to 8080).
-FROM python:3.13-slim
+# Pull the base via Google's Docker Hub mirror to avoid Docker Hub rate limits /
+# 504s on CI runners (mirror.gcr.io is a pull-through cache of Docker Hub).
+FROM mirror.gcr.io/library/python:3.13-slim
 
 # Bring in the uv binary (matches local toolchain; pinned for reproducibility).
 COPY --from=ghcr.io/astral-sh/uv:0.8 /uv /bin/uv
