@@ -13,7 +13,9 @@ resource "google_project" "this" {
 }
 
 # APIs the demo will use. Enabled up front so each feature can create resources
-# without a separate enablement step.
+# without a separate enablement step. NOTE: cloudresourcemanager must be enabled
+# for the terraform SA to read project/IAM in CICD (newly-enabled APIs take a
+# few minutes to propagate before plan/apply succeeds).
 locals {
   services = [
     "cloudresourcemanager.googleapis.com", # CRM — required for project/IAM reads (esp. by the TF SA in CICD)
