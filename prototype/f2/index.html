@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MemoryChat — F2 prototype</title>
+  <!--
+    UI/UX PROTOTYPE ONLY (for design approval) — React + Babel from CDN.
+    F2 adds SHORT-TERM MEMORY: session_id + persisted history, plus a left
+    sidebar to SELECT (switch back to) and DELETE past sessions.
+    Persistence is MOCKED with localStorage. Real F2 persists to Firestore;
+    delete maps to DELETE /sessions/{id}. The session list is client-side in
+    F2 (server-side per user_id arrives in F3).
+  -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    :root { --blue:#2563eb; --gray:#f1f3f5; --line:#e5e7eb; --muted:#6b7280; --sidebar:#f7f8fa; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, -apple-system, sans-serif; color:#111; background:#fafafa; }
+    .app { max-width: 920px; margin: 0 auto; height: 100vh; display:flex; background:#fff; border-left:1px solid var(--line); border-right:1px solid var(--line); }
+
+    /* Sidebar */
+    .sidebar { width: 230px; flex:none; background:var(--sidebar); border-right:1px solid var(--line); display:flex; flex-direction:column; }
+    .sidebar .top { padding:12px; border-bottom:1px solid var(--line); }
+    .newchat { width:100%; padding:.55rem; border:1px solid var(--line); border-radius:9px; background:#fff; color:#374151; font-weight:600; cursor:pointer; font-size:.85rem; }
+    .newchat:hover { background:#fff; border-color:var(--blue); color:var(--blue); }
+    .list { flex:1; overflow-y:auto; padding:8px; display:flex; flex-direction:column; gap:4px; }
+    .item { display:flex; align-items:center; gap:6px; padding:.5rem .55rem; border-radius:8px; cursor:pointer; color:#374151; }
+    .item:hover { background:#eceef1; }
+    .item.active { background:#e4ecff; color:#1d4ed8; }
+    .item .txt { flex:1; min-width:0; }
+    .item .label { font-size:.82rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .item .sid { font-size:.66rem; color:var(--muted); font-family:ui-monospace,monospace; }
+    .item .del { opacity:0; border:none; background:none; color:var(--muted); cursor:pointer; font-size:1rem; line-height:1; padding:2px 4px; border-radius:6px; }
+    .item:hover .del { opacity:1; }
+    .item .del:hover { background:#fde2e2; color:#b91c1c; }
+
+    /* Main column */
+    .main { flex:1; min-width:0; display:flex; flex-direction:column; }
+    header { padding: 12px 20px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:10px; }
+    header h1 { font-size: 1.05rem; margin:0; }
+    .badge { font-size:.7rem; padding:.15rem .5rem; border-radius:999px; background:var(--gray); color:var(--muted); }
+    .feed { flex:1; overflow-y:auto; padding: 18px 20px; display:flex; flex-direction:column; gap:12px; }
+    .empty { flex:1; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:.9rem; }
+    .row { display:flex; }
+    .row.user { justify-content:flex-end; }
+    .bubble { max-width: 80%; padding: 10px 13px; border-radius: 14px; line-height:1.4; white-space:pre-wrap; word-wrap:break-word; }
+    .user .bubble { background:var(--blue); color:#fff; border-bottom-right-radius:4px; }
+    .model .bubble { background:var(--gray); color:#111; border-bottom-left-radius:4px; }
+    .typing { display:flex; gap:4px; padding:4px 2px; }
+    .typing span { width:6px; height:6px; border-radius:50%; background:var(--muted); animation: blink 1.2s infinite; }
+    .typing span:nth-child(2){ animation-delay:.2s; } .typing span:nth-child(3){ animation-delay:.4s; }
+    @keyframes blink { 0%,80%,100%{ opacity:.2 } 40%{ opacity:1 } }
+    form { display:flex; gap:8px; padding:12px 16px; border-top:1px solid var(--line); }
+    input[type=text] { flex:1; padding:11px 14px; border:1px solid var(--line); border-radius:10px; font-size:.95rem; outline:none; }
+    input[type=text]:focus { border-color:var(--blue); }
+    button.send { padding:0 18px; border:none; border-radius:10px; background:var(--blue); color:#fff; font-weight:600; cursor:pointer; }
+    button.send:disabled { opacity:.5; cursor:default; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useRef, useEffect } = React;
+
+    // --- MOCK persistence (stands in for Firestore) -------------------------
+    const sid8 = () => Math.random().toString(16).slice(2, 10);
+    const WELCOME = { role:"model", text:"Hi! Ask me anything. (I'll remember this session.)" };
+
+    function loadSessions() {
+      let list = JSON.parse(localStorage.getItem("mc_sessions") || "[]");
+      let active = localStorage.getItem("mc_session");
+      if (list.length === 0) {
+        const sid = sid8();
+        list = [{ sid, label: "New chat" }];
+        active = sid;
+        localStorage.setItem("mc_sessions", JSON.stringify(list));
+        localStorage.setItem("mc_session", sid);
+        localStorage.setItem("mc_msgs_" + sid, JSON.stringify([WELCOME]));
+      }
+      if (!active || !list.find(s => s.sid === active)) active = list[0].sid;
+      return { list, active };
+    }
+    const loadMsgs = (sid) => JSON.parse(localStorage.getItem("mc_msgs_" + sid) || JSON.stringify([WELCOME]));
+    const saveMsgs = (sid, msgs) => localStorage.setItem("mc_msgs_" + sid, JSON.stringify(msgs));
+    const dropMsgs = (sid) => localStorage.removeItem("mc_msgs_" + sid);
+
+    function mockReply(text, history) {
+      const t = text.toLowerCase();
+      const nameTurn = history.find(m => m.role==="user" && /my name is/i.test(m.text));
+      if (/what.*my name/i.test(t) && nameTurn)
+        return `Your name is ${nameTurn.text.replace(/.*my name is/i,"").replace(/[.!]/g,"").trim()} — remembered from earlier this session.`;
+      if (/my name is/i.test(t)) return "Nice to meet you! I'll remember that for this session.";
+      return "(prototype) Got it. Real F2 sends this whole session as context to Gemini.";
+    }
+
+    function Sidebar({ sessions, active, onSelect, onDelete, onNew }) {
+      return (
+        <div className="sidebar">
+          <div className="top"><button className="newchat" onClick={onNew}>+ New chat</button></div>
+          <div className="list">
+            {sessions.map(s => (
+              <div key={s.sid} className={"item" + (s.sid===active ? " active" : "")} onClick={() => onSelect(s.sid)}>
+                <div className="txt">
+                  <div className="label">{s.label}</div>
+                  <div className="sid">{s.sid}</div>
+                </div>
+                <button className="del" title="Delete session"
+                        onClick={(e) => { e.stopPropagation(); onDelete(s.sid); }}>×</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    function Feed({ messages, pending }) {
+      const ref = useRef(null);
+      useEffect(() => { ref.current?.scrollTo(0, ref.current.scrollHeight); }, [messages, pending]);
+      return (
+        <div className="feed" ref={ref}>
+          {messages.map((m, i) => (
+            <div key={i} className={`row ${m.role}`}><div className="bubble">{m.text}</div></div>
+          ))}
+          {pending && (
+            <div className="row model"><div className="bubble"><div className="typing"><span/><span/><span/></div></div></div>
+          )}
+        </div>
+      );
+    }
+
+    function App() {
+      const init = loadSessions();
+      const [sessions, setSessions] = useState(init.list);
+      const [active, setActive] = useState(init.active);
+      const [messages, setMessages] = useState(() => loadMsgs(init.active));
+      const [draft, setDraft] = useState("");
+      const [pending, setPending] = useState(false);
+
+      useEffect(() => { if (active) saveMsgs(active, messages); }, [active, messages]);
+      const persistSessions = (list) => { setSessions(list); localStorage.setItem("mc_sessions", JSON.stringify(list)); };
+
+      function switchTo(sid) {
+        setActive(sid);
+        localStorage.setItem("mc_session", sid);
+        setMessages(loadMsgs(sid));
+      }
+      function newChat() {
+        const sid = sid8();
+        saveMsgs(sid, [WELCOME]);
+        persistSessions([{ sid, label: "New chat" }, ...sessions]);
+        switchTo(sid);
+      }
+      function deleteChat(sid) {            // <-- delete a session (real F2: DELETE /sessions/{id})
+        dropMsgs(sid);
+        const remaining = sessions.filter(s => s.sid !== sid);
+        persistSessions(remaining);
+        if (remaining.length === 0) {       // deleted the last one — show empty state, do NOT auto-create
+          setActive(null); localStorage.removeItem("mc_session"); setMessages([]);
+        } else if (sid === active) {
+          switchTo(remaining[0].sid);
+        }
+      }
+
+      async function send(e) {
+        e.preventDefault();
+        const text = draft.trim();
+        if (!text || pending) return;
+        const withUser = [...messages, { role:"user", text }];
+        setMessages(withUser);
+        setDraft("");
+        setPending(true);
+        const cur = sessions.find(s => s.sid === active);
+        if (cur && cur.label === "New chat")
+          persistSessions(sessions.map(s => s.sid === active ? { ...s, label: text.slice(0, 30) } : s));
+        await new Promise(r => setTimeout(r, 600));
+        setMessages(m => [...m, { role:"model", text: mockReply(text, withUser) }]);
+        setPending(false);
+      }
+
+      return (
+        <div className="app">
+          <Sidebar sessions={sessions} active={active} onSelect={switchTo} onDelete={deleteChat} onNew={newChat} />
+          <div className="main">
+            <header>
+              <h1>MemoryChat</h1>
+              <span className="badge">F2 · short-term memory</span>
+            </header>
+            {active ? (
+              <React.Fragment>
+                <Feed messages={messages} pending={pending} />
+                <form onSubmit={send}>
+                  <input type="text" value={draft} placeholder="type a message…"
+                         onChange={e => setDraft(e.target.value)} autoFocus />
+                  <button className="send" type="submit" disabled={!draft.trim() || pending}>Send</button>
+                </form>
+              </React.Fragment>
+            ) : (
+              <div className="empty">No conversation. Click{" "}<b>+ New chat</b>{" "}to start one.</div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

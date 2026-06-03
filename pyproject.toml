@@ -1,0 +1,17 @@
+[project]
+name = "memorychat"
+version = "0.0.0"
+description = "Minimal production-flavored GCP chat demo with short- and long-term memory."
+requires-python = ">=3.13"
+# Deps grow per feature: google-genai @ F1, firestore @ F2, langfuse @ F5.
+dependencies = [
+    "fastapi",
+    "google-cloud-firestore>=2.27.0",
+    "google-genai>=2.7.0",
+    "uvicorn[standard]",
+]
+
+[tool.uv]
+# This is an application, not a library — don't try to build/install the root
+# as a package; uv just manages the dependency environment (.venv + uv.lock).
+package = false

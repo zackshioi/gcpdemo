@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MemoryChat</title>
+  <!--
+    F2 frontend: one static file, vanilla JS, no build, no React.
+    Short-term memory = a session_id whose transcript lives in Firestore.
+    The browser keeps only the session LIST (id + label) in localStorage;
+    message history is always fetched from the server (source of truth).
+      - POST   /chat               {session_id, message} -> {reply}
+      - GET    /sessions/{id}       -> {messages:[...]}        (load / switch)
+      - DELETE /sessions/{id}                                   (sidebar delete)
+  -->
+  <style>
+    :root { --blue:#2563eb; --gray:#f1f3f5; --line:#e5e7eb; --muted:#6b7280; --sidebar:#f7f8fa; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, -apple-system, sans-serif; color:#111; background:#fafafa; }
+    .app { max-width: 920px; margin: 0 auto; height: 100vh; display:flex; background:#fff; border-left:1px solid var(--line); border-right:1px solid var(--line); }
+
+    .sidebar { width: 230px; flex:none; background:var(--sidebar); border-right:1px solid var(--line); display:flex; flex-direction:column; }
+    .sidebar .top { padding:12px; border-bottom:1px solid var(--line); }
+    #newchat { width:100%; padding:.55rem; border:1px solid var(--line); border-radius:9px; background:#fff; color:#374151; font-weight:600; cursor:pointer; font-size:.85rem; }
+    #newchat:hover { border-color:var(--blue); color:var(--blue); }
+    .list { flex:1; overflow-y:auto; padding:8px; display:flex; flex-direction:column; gap:4px; }
+    .item { display:flex; align-items:center; gap:6px; padding:.5rem .55rem; border-radius:8px; cursor:pointer; color:#374151; }
+    .item:hover { background:#eceef1; }
+    .item.active { background:#e4ecff; color:#1d4ed8; }
+    .item .txt { flex:1; min-width:0; }
+    .item .label { font-size:.82rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .item .sid { font-size:.66rem; color:var(--muted); font-family:ui-monospace,monospace; }
+    .item .del { opacity:0; border:none; background:none; color:var(--muted); cursor:pointer; font-size:1rem; line-height:1; padding:2px 4px; border-radius:6px; }
+    .item:hover .del { opacity:1; }
+    .item .del:hover { background:#fde2e2; color:#b91c1c; }
+
+    .main { flex:1; min-width:0; display:flex; flex-direction:column; }
+    header { padding: 12px 20px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:10px; }
+    header h1 { font-size: 1.05rem; margin:0; }
+    .badge { font-size:.7rem; padding:.15rem .5rem; border-radius:999px; background:var(--gray); color:var(--muted); }
+    #content { flex:1; min-height:0; display:flex; flex-direction:column; }
+    .feed { flex:1; overflow-y:auto; padding: 18px 20px; display:flex; flex-direction:column; gap:12px; }
+    .empty { flex:1; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:.9rem; }
+    .row { display:flex; }
+    .row.user { justify-content:flex-end; }
+    .bubble { max-width: 80%; padding: 10px 13px; border-radius: 14px; line-height:1.4; white-space:pre-wrap; word-wrap:break-word; }
+    .user .bubble { background:var(--blue); color:#fff; border-bottom-right-radius:4px; }
+    .model .bubble { background:var(--gray); color:#111; border-bottom-left-radius:4px; }
+    .error .bubble { background:#fee2e2; color:#991b1b; }
+    .typing { display:flex; gap:4px; padding:4px 2px; }
+    .typing span { width:6px; height:6px; border-radius:50%; background:var(--muted); animation: blink 1.2s infinite; }
+    .typing span:nth-child(2){ animation-delay:.2s; } .typing span:nth-child(3){ animation-delay:.4s; }
+    @keyframes blink { 0%,80%,100%{ opacity:.2 } 40%{ opacity:1 } }
+    form { display:flex; gap:8px; padding:12px 16px; border-top:1px solid var(--line); }
+    input[type=text] { flex:1; padding:11px 14px; border:1px solid var(--line); border-radius:10px; font-size:.95rem; outline:none; }
+    input[type=text]:focus { border-color:var(--blue); }
+    button.send { padding:0 18px; border:none; border-radius:10px; background:var(--blue); color:#fff; font-weight:600; cursor:pointer; }
+    button.send:disabled { opacity:.5; cursor:default; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="sidebar">
+      <div class="top"><button id="newchat">+ New chat</button></div>
+      <div class="list" id="list"></div>
+    </div>
+    <div class="main">
+      <header>
+        <h1>MemoryChat</h1>
+        <span class="badge">F2 · short-term memory</span>
+      </header>
+      <div id="content"></div>
+    </div>
+  </div>
+
+  <script>
+    const WELCOME = { role: "model", text: "Hi! Ask me anything. (I'll remember this session.)" };
+    const $ = (id) => document.getElementById(id);
+
+    // --- client-side session list (ids + labels only; messages live server-side)
+    let sessions = JSON.parse(localStorage.getItem("mc_sessions") || "[]");
+    let active = localStorage.getItem("mc_session");
+    let messages = [];
+    if (active && !sessions.find((s) => s.sid === active)) active = null;
+
+    const saveSessions = () => localStorage.setItem("mc_sessions", JSON.stringify(sessions));
+    const setActive = (sid) => {
+      active = sid;
+      if (sid) localStorage.setItem("mc_session", sid);
+      else localStorage.removeItem("mc_session");
+    };
+
+    // --- sidebar -----------------------------------------------------------
+    function renderSidebar() {
+      const list = $("list");
+      list.innerHTML = "";
+      for (const s of sessions) {
+        const item = document.createElement("div");
+        item.className = "item" + (s.sid === active ? " active" : "");
+        item.innerHTML =
+          `<div class="txt"><div class="label"></div><div class="sid">${s.sid.slice(0, 8)}</div></div>` +
+          `<button class="del" title="Delete session">×</button>`;
+        item.querySelector(".label").textContent = s.label;        // textContent = no HTML injection
+        item.addEventListener("click", () => switchTo(s.sid));
+        item.querySelector(".del").addEventListener("click", (e) => { e.stopPropagation(); deleteChat(s.sid); });
+        list.appendChild(item);
+      }
+    }
+
+    // --- main content (feed + composer, or empty state) --------------------
+    function renderContent() {
+      const c = $("content");
+      c.innerHTML = "";
+      if (!active) {
+        const empty = document.createElement("div");
+        empty.className = "empty";
+        empty.innerHTML = 'No conversation. Click <b>&nbsp;+ New chat&nbsp;</b> to start one.';
+        c.appendChild(empty);
+        return;
+      }
+      const feed = document.createElement("div");
+      feed.className = "feed";
+      feed.id = "feed";
+      c.appendChild(feed);
+
+      const form = document.createElement("form");
+      form.innerHTML =
+        '<input type="text" id="input" placeholder="type a message…" autocomplete="off" />' +
+        '<button class="send" type="submit" id="send">Send</button>';
+      form.addEventListener("submit", onSend);
+      c.appendChild(form);
+
+      for (const m of messages) addBubble(m.role, m.text);
+      $("input").focus();
+    }
+
+    function addBubble(role, text) {
+      const feed = $("feed");
+      const row = document.createElement("div");
+      row.className = "row " + role;
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.textContent = text;
+      row.appendChild(bubble);
+      feed.appendChild(row);
+      feed.scrollTop = feed.scrollHeight;
+      return row;
+    }
+    function addTyping() {
+      const feed = $("feed");
+      const row = document.createElement("div");
+      row.className = "row model";
+      row.innerHTML = '<div class="bubble"><div class="typing"><span></span><span></span><span></span></div></div>';
+      feed.appendChild(row);
+      feed.scrollTop = feed.scrollHeight;
+      return row;
+    }
+
+    // --- actions -----------------------------------------------------------
+    async function loadActive() {
+      const res = await fetch("/sessions/" + active);
+      const data = await res.json();
+      messages = data.messages.length ? data.messages : [WELCOME];
+      renderContent();
+    }
+
+    function newChat() {
+      const sid = crypto.randomUUID();
+      sessions.unshift({ sid, label: "New chat" });
+      saveSessions();
+      setActive(sid);
+      messages = [WELCOME];           // welcome is client-side; persisted once you send
+      renderSidebar();
+      renderContent();
+    }
+
+    function switchTo(sid) {
+      setActive(sid);
+      renderSidebar();
+      loadActive();
+    }
+
+    async function deleteChat(sid) {
+      await fetch("/sessions/" + sid, { method: "DELETE" });
+      sessions = sessions.filter((s) => s.sid !== sid);
+      saveSessions();
+      if (sid === active) {
+        if (sessions.length) { switchTo(sessions[0].sid); }      // fall back to first remaining
+        else { setActive(null); messages = []; renderContent(); } // last one deleted -> empty state
+      }
+      renderSidebar();
+    }
+
+    async function onSend(e) {
+      e.preventDefault();
+      const input = $("input"), send = $("send");
+      const text = input.value.trim();
+      if (!text || !active) return;
+
+      addBubble("user", text);
+      messages.push({ role: "user", text });
+      input.value = "";
+      send.disabled = true;
+      const typing = addTyping();
+
+      // Label a fresh session by its first message so the sidebar is readable.
+      const cur = sessions.find((s) => s.sid === active);
+      if (cur && cur.label === "New chat") { cur.label = text.slice(0, 30); saveSessions(); renderSidebar(); }
+
+      try {
+        const res = await fetch("/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: active, message: text }),
+        });
+        typing.remove();
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        addBubble("model", data.reply);
+        messages.push({ role: "model", text: data.reply });
+      } catch (err) {
+        typing.remove();
+        addBubble("error", "Something went wrong: " + err.message);
+      } finally {
+        send.disabled = false;
+        $("input").focus();
+      }
+    }
+
+    $("newchat").addEventListener("click", newChat);
+
+    // --- boot --------------------------------------------------------------
+    renderSidebar();
+    if (active) loadActive();
+    else renderContent();
+  </script>
+</body>
+</html>

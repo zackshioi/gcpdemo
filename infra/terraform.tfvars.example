@@ -1,0 +1,7 @@
+# Copy to terraform.tfvars (gitignored) and fill in.
+project_id = "memorychat-demo-123456"
+region     = "us-central1"
+
+# To let Terraform create the project from scratch, uncomment and set:
+# create_project  = true
+# billing_account = "XXXXXX-XXXXXX-XXXXXX"

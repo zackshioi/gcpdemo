@@ -1,0 +1,52 @@
+name: deploy
+
+# Build the image and deploy to Cloud Run on every push to main.
+# Auth is keyless via Workload Identity Federation (no JSON key in GitHub).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write # required to mint the OIDC token for WIF
+
+env:
+  PROJECT: gcpdemo-zackshioi
+  REGION: us-central1
+  SERVICE: memorychat
+  IMAGE: us-central1-docker.pkg.dev/gcpdemo-zackshioi/app/memorychat
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Exchange the GitHub OIDC token for short-lived GCP credentials that
+      # impersonate the deployer SA. These values are not secrets.
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/1079899377320/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+          service_account: github-deployer@gcpdemo-zackshioi.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
+
+      - name: Build & push image
+        run: |
+          docker build -t ${IMAGE}:${GITHUB_SHA} .
+          docker push ${IMAGE}:${GITHUB_SHA}
+
+      # Update only the image; Terraform owns the rest of the service config
+      # (runtime SA, env, scaling, public access), so it is preserved here.
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${SERVICE} \
+            --image ${IMAGE}:${GITHUB_SHA} \
+            --region ${REGION} \
+            --project ${PROJECT} \
+            --quiet

@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "f1-prototype",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "4321", "--directory", "prototype/f1"],
+      "port": 4321
+    },
+    {
+      "name": "f2-prototype",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "4322", "--directory", "prototype/f2"],
+      "port": 4322
+    },
+    {
+      "name": "app",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-lc", "GCP_PROJECT=gcpdemo-zackshioi GCP_LOCATION=us-central1 uv run uvicorn app.main:app --reload --port 8080"],
+      "port": 8080
+    }
+  ]
+}

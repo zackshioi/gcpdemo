@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Local env / secrets — never commit (WIF means no JSON keys anyway)
+.env
+*.json.key
+
+# Terraform — never commit state (may hold secrets) or local provider cache
+.terraform/
+*.tfstate
+*.tfstate.*
+terraform.tfvars
+# NOTE: .terraform.lock.hcl IS committed (pins provider versions) — not ignored.
+
+# Local agent config (keep .claude/launch.json, ignore local settings)
+.claude/settings.local.json
+
+# macOS
+.DS_Store
