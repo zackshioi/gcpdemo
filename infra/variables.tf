@@ -9,6 +9,12 @@ variable "region" {
   description = "Single region for all resources (see docs/DECISIONS.md ADR-005)."
 }
 
+variable "agent_engine_id" {
+  type        = string
+  default     = "projects/1079899377320/locations/us-central1/reasoningEngines/6351899014627065856"
+  description = "Memory Bank Agent Engine resource name. Created out-of-band (no TF resource); see RUNBOOK."
+}
+
 variable "create_project" {
   type        = bool
   default     = false
