@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MemoryChat — F3 prototype</title>
+  <!--
+    UI/UX PROTOTYPE ONLY (design approval) — React + Babel from CDN.
+    F3 adds LONG-TERM MEMORY scoped by user_id: facts about YOU persist across
+    sessions and browsers. New element vs F2: a user_id field at the top of the
+    sidebar (your identity). Sessions are scoped per user_id.
+    Here long-term memory is MOCKED in localStorage (per user_id) so you can see
+    the cross-session effect. Real F3 uses Vertex AI Memory Bank: it extracts
+    facts with gemini-2.5-flash and retrieves them by user_id.
+    NOTE: the "Memories" inspector panel is F4 — not shown here.
+  -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    :root { --blue:#2563eb; --gray:#f1f3f5; --line:#e5e7eb; --muted:#6b7280; --sidebar:#f7f8fa; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, -apple-system, sans-serif; color:#111; background:#fafafa; }
+    .app { max-width: 920px; margin: 0 auto; height: 100vh; display:flex; background:#fff; border-left:1px solid var(--line); border-right:1px solid var(--line); }
+
+    .sidebar { width: 240px; flex:none; background:var(--sidebar); border-right:1px solid var(--line); display:flex; flex-direction:column; }
+    .user { padding:12px; border-bottom:1px solid var(--line); }
+    .user label { display:block; font-size:.68rem; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin-bottom:4px; }
+    .user .field { display:flex; align-items:center; gap:6px; }
+    .user .who { width:20px;height:20px;border-radius:50%;background:var(--blue);color:#fff;font-size:.7rem;display:flex;align-items:center;justify-content:center;flex:none; }
+    .user input { flex:1; min-width:0; padding:.4rem .5rem; border:1px solid var(--line); border-radius:7px; font-size:.85rem; }
+    .top { padding:12px; border-bottom:1px solid var(--line); }
+    #newchat { width:100%; padding:.55rem; border:1px solid var(--line); border-radius:9px; background:#fff; color:#374151; font-weight:600; cursor:pointer; font-size:.85rem; }
+    #newchat:hover { border-color:var(--blue); color:var(--blue); }
+    .list { flex:1; overflow-y:auto; padding:8px; display:flex; flex-direction:column; gap:4px; }
+    .item { display:flex; align-items:center; gap:6px; padding:.5rem .55rem; border-radius:8px; cursor:pointer; color:#374151; }
+    .item:hover { background:#eceef1; }
+    .item.active { background:#e4ecff; color:#1d4ed8; }
+    .item .txt { flex:1; min-width:0; }
+    .item .label { font-size:.82rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .item .sid { font-size:.66rem; color:var(--muted); font-family:ui-monospace,monospace; }
+    .item .del { opacity:0; border:none; background:none; color:var(--muted); cursor:pointer; font-size:1rem; line-height:1; padding:2px 4px; border-radius:6px; }
+    .item:hover .del { opacity:1; }
+    .item .del:hover { background:#fde2e2; color:#b91c1c; }
+
+    .main { flex:1; min-width:0; display:flex; flex-direction:column; }
+    header { padding: 12px 20px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:10px; }
+    header h1 { font-size: 1.05rem; margin:0; }
+    .badge { font-size:.7rem; padding:.15rem .5rem; border-radius:999px; background:var(--gray); color:var(--muted); }
+    .hint { text-align:center; font-size:.72rem; color:var(--muted); padding: 6px 12px 0; }
+    .feed { flex:1; overflow-y:auto; padding: 14px 20px; display:flex; flex-direction:column; gap:12px; }
+    .row { display:flex; }
+    .row.user-msg { justify-content:flex-end; }
+    .bubble { max-width: 80%; padding: 10px 13px; border-radius: 14px; line-height:1.4; white-space:pre-wrap; word-wrap:break-word; }
+    .user-msg .bubble { background:var(--blue); color:#fff; border-bottom-right-radius:4px; }
+    .model .bubble { background:var(--gray); color:#111; border-bottom-left-radius:4px; }
+    .typing { display:flex; gap:4px; padding:4px 2px; }
+    .typing span { width:6px; height:6px; border-radius:50%; background:var(--muted); animation: blink 1.2s infinite; }
+    .typing span:nth-child(2){ animation-delay:.2s; } .typing span:nth-child(3){ animation-delay:.4s; }
+    @keyframes blink { 0%,80%,100%{ opacity:.2 } 40%{ opacity:1 } }
+    form { display:flex; gap:8px; padding:12px 16px; border-top:1px solid var(--line); }
+    input[type=text].msg { flex:1; padding:11px 14px; border:1px solid var(--line); border-radius:10px; font-size:.95rem; outline:none; }
+    input.msg:focus { border-color:var(--blue); }
+    button.send { padding:0 18px; border:none; border-radius:10px; background:var(--blue); color:#fff; font-weight:600; cursor:pointer; }
+    button.send:disabled { opacity:.5; cursor:default; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useRef, useEffect } = React;
+    const sid8 = () => Math.random().toString(16).slice(2, 10);
+    const WELCOME = { role:"model", text:"Hi! I'm tied to your user_id — I'll remember you across sessions." };
+
+    // --- per-user mock stores (stand in for Firestore + Memory Bank) --------
+    const sessKey = (uid) => "mc_sessions_" + uid;
+    const activeKey = (uid) => "mc_active_" + uid;
+    const msgsKey = (sid) => "mc_msgs_" + sid;
+    const factsKey = (uid) => "mc_facts_" + uid;            // <-- long-term, by user_id
+
+    const loadList = (uid) => JSON.parse(localStorage.getItem(sessKey(uid)) || "[]");
+    const saveList = (uid, l) => localStorage.setItem(sessKey(uid), JSON.stringify(l));
+    const loadMsgs = (sid) => JSON.parse(localStorage.getItem(msgsKey(sid)) || JSON.stringify([WELCOME]));
+    const saveMsgs = (sid, m) => localStorage.setItem(msgsKey(sid), JSON.stringify(m));
+    const loadFacts = (uid) => JSON.parse(localStorage.getItem(factsKey(uid)) || "[]");
+    const saveFacts = (uid, f) => localStorage.setItem(factsKey(uid), JSON.stringify(f));
+
+    // Mock "extraction" — real F3 sends the turn to Memory Bank (gemini-2.5-flash).
+    function extractFact(text) {
+      const m = text.match(/\b(i am|i'm|my name is|i like|i love|i prefer|i'm a|i am a)\b\s+(.*)/i);
+      if (!m) return null;
+      return (m[1].replace(/^i'?m/i, "I'm") + " " + m[2]).replace(/[.!?]+$/, "").trim();
+    }
+    function mockReply(text, facts) {
+      if (/what.*(know|remember).*me|who am i|about me/i.test(text))
+        return facts.length ? "Here's what I remember about you:\n• " + facts.join("\n• ")
+                            : "I don't know much about you yet — tell me something!";
+      const f = extractFact(text);
+      if (f) return `Got it — I'll remember that (${f}). It persists across all your sessions.`;
+      return "(prototype) Real F3 retrieves your long-term memories by user_id and feeds them to Gemini.";
+    }
+
+    function Feed({ messages, pending }) {
+      const ref = useRef(null);
+      useEffect(() => { ref.current?.scrollTo(0, ref.current.scrollHeight); }, [messages, pending]);
+      return (
+        <div className="feed" ref={ref}>
+          {messages.map((m,i) => (
+            <div key={i} className={"row " + (m.role==="user" ? "user-msg" : "model")}><div className="bubble">{m.text}</div></div>
+          ))}
+          {pending && <div className="row model"><div className="bubble"><div className="typing"><span/><span/><span/></div></div></div>}
+        </div>
+      );
+    }
+
+    function App() {
+      const [uid, setUid] = useState(localStorage.getItem("mc_uid") || "alice");
+      const [sessions, setSessions] = useState(() => loadList(uid));
+      const [active, setActive] = useState(() => localStorage.getItem(activeKey(uid)));
+      const [messages, setMessages] = useState([]);
+      const [draft, setDraft] = useState("");
+      const [pending, setPending] = useState(false);
+
+      // (Re)load everything when the user_id changes — switching identity.
+      useEffect(() => {
+        localStorage.setItem("mc_uid", uid);
+        const list = loadList(uid); setSessions(list);
+        let a = localStorage.getItem(activeKey(uid));
+        if (a && !list.find(s => s.sid===a)) a = null;
+        setActive(a);
+        setMessages(a ? loadMsgs(a) : []);
+      }, [uid]);
+
+      useEffect(() => { if (active) saveMsgs(active, messages); }, [active, messages]);
+      const persist = (l) => { setSessions(l); saveList(uid, l); };
+      const pickActive = (a) => { setActive(a); if (a) localStorage.setItem(activeKey(uid), a); else localStorage.removeItem(activeKey(uid)); };
+
+      function switchTo(sid) { pickActive(sid); setMessages(loadMsgs(sid)); }
+      function newChat() { const sid = sid8(); saveMsgs(sid,[WELCOME]); persist([{sid,label:"New chat"}, ...sessions]); pickActive(sid); setMessages([WELCOME]); }
+      function del(sid) {
+        const rest = sessions.filter(s=>s.sid!==sid); persist(rest);
+        if (sid===active) { if (rest.length) switchTo(rest[0].sid); else { pickActive(null); setMessages([]); } }
+      }
+
+      async function send(e) {
+        e.preventDefault();
+        const text = draft.trim(); if (!text || pending || !active) return;
+        setMessages(m => [...m, {role:"user", text}]); setDraft(""); setPending(true);
+        const cur = sessions.find(s=>s.sid===active);
+        if (cur && cur.label==="New chat") persist(sessions.map(s=>s.sid===active?{...s,label:text.slice(0,28)}:s));
+        // mock long-term extraction, scoped to uid
+        const facts = loadFacts(uid); const f = extractFact(text);
+        if (f && !facts.includes(f)) { facts.push(f); saveFacts(uid, facts); }
+        await new Promise(r=>setTimeout(r,600));
+        setMessages(m => [...m, {role:"model", text: mockReply(text, loadFacts(uid))}]);
+        setPending(false);
+      }
+
+      return (
+        <div className="app">
+          <div className="sidebar">
+            <div className="user">
+              <label>Your user_id (identity)</label>
+              <div className="field">
+                <div className="who">{uid.slice(0,1).toUpperCase()}</div>
+                <input value={uid} onChange={e=>setUid(e.target.value.trim()||"alice")} spellCheck="false" />
+              </div>
+            </div>
+            <div className="top"><button id="newchat" onClick={newChat}>+ New chat</button></div>
+            <div className="list">
+              {sessions.map(s => (
+                <div key={s.sid} className={"item"+(s.sid===active?" active":"")} onClick={()=>switchTo(s.sid)}>
+                  <div className="txt"><div className="label">{s.label}</div><div className="sid">{s.sid}</div></div>
+                  <button className="del" onClick={e=>{e.stopPropagation(); del(s.sid);}}>×</button>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="main">
+            <header><h1>MemoryChat</h1><span className="badge">F3 · long-term memory</span></header>
+            <div className="hint">Long-term memory is tied to <b>user_id = {uid}</b>. Start a New chat (or open another browser) with the same id and I still remember you.</div>
+            {active ? (
+              <React.Fragment>
+                <Feed messages={messages} pending={pending} />
+                <form onSubmit={send}>
+                  <input className="msg" type="text" value={draft} placeholder="try: I'm vegetarian and I love hiking" onChange={e=>setDraft(e.target.value)} autoFocus />
+                  <button className="send" type="submit" disabled={!draft.trim()||pending}>Send</button>
+                </form>
+              </React.Fragment>
+            ) : (
+              <div className="hint" style={{marginTop:"40px"}}>No conversation. Click <b>+ New chat</b> to start.</div>
+            )}
+          </div>
+        </div>
+      );
+    }
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

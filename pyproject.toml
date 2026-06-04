@@ -6,6 +6,7 @@ requires-python = ">=3.13"
 # Deps grow per feature: google-genai @ F1, firestore @ F2, langfuse @ F5.
 dependencies = [
     "fastapi",
+    "google-cloud-aiplatform[agent-engines]>=1.155.0",
     "google-cloud-firestore>=2.27.0",
     "google-genai>=2.7.0",
     "uvicorn[standard]",

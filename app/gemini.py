@@ -27,11 +27,20 @@ def _client() -> genai.Client:
     )
 
 
-def generate(history: list[dict]) -> str:
-    """Multi-turn completion. `history` is [{role, text}, ...] oldest-first,
-    with the latest user message already appended. Roles are "user"/"model",
-    which map straight onto Vertex's content roles. F3 will prepend long-term
-    memory as a system instruction here."""
+def generate(history: list[dict], memories: list[str] | None = None) -> str:
+    """Multi-turn completion. `history` is [{role, text}, ...] oldest-first with
+    the latest user message appended. Long-term `memories` (F3) are injected as a
+    system instruction so the model "knows" the user across sessions."""
     contents = [{"role": m["role"], "parts": [{"text": m["text"]}]} for m in history]
-    resp = _client().models.generate_content(model=MODEL, contents=contents)
+    config = None
+    if memories:
+        facts = "\n".join(f"- {m}" for m in memories)
+        config = {
+            "system_instruction": (
+                "You are a helpful assistant. Known facts about the user "
+                f"(from earlier conversations):\n{facts}\n"
+                "Use them naturally; don't list them unless asked."
+            )
+        }
+    resp = _client().models.generate_content(model=MODEL, contents=contents, config=config)
     return resp.text

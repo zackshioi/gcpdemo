@@ -8,20 +8,21 @@ on this orchestration. See docs/PRD.md.
 
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app import gemini, short_term
+from app import gemini, long_term, short_term
 
 # The frontend is a single static HTML file living next to this module.
 STATIC_DIR = Path(__file__).parent / "static"
 
-app = FastAPI(title="MemoryChat", version="0.2.0")
+app = FastAPI(title="MemoryChat", version="0.3.0")
 
 
 class ChatRequest(BaseModel):
+    user_id: str  # identity for long-term memory (F3)
     session_id: str
     message: str
 
@@ -42,14 +43,26 @@ def health() -> dict[str, str]:
 
 
 @app.post("/chat")
-def chat(req: ChatRequest) -> ChatResponse:
-    """Persist the user turn, replay the full session to Gemini, persist the
-    reply. Firestore is the source of truth for history."""
+def chat(req: ChatRequest, bg: BackgroundTasks) -> ChatResponse:
+    """One turn with both memories:
+    1. persist user turn (short-term, Firestore)
+    2. retrieve user-scoped long-term memories (Memory Bank)
+    3. replay session history + inject memories -> Gemini
+    4. persist model turn
+    5. fire async long-term extraction for this turn (non-blocking)
+    """
     try:
         short_term.add_message(req.session_id, "user", req.message)
         history = short_term.get_history(req.session_id)
-        reply = gemini.generate(history)
+        memories = long_term.retrieve(req.user_id)
+        reply = gemini.generate(history, memories=memories)
         short_term.add_message(req.session_id, "model", reply)
+        # Extract memories from this turn in the background (don't block reply).
+        bg.add_task(
+            long_term.generate,
+            req.user_id,
+            [{"role": "user", "text": req.message}, {"role": "model", "text": reply}],
+        )
         return ChatResponse(reply=reply)
     except Exception as exc:  # surface upstream failures as 502, don't 500 opaquely
         raise HTTPException(status_code=502, detail=f"chat failed: {exc}")

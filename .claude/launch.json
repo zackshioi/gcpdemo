@@ -14,9 +14,15 @@
       "port": 4322
     },
     {
+      "name": "f3-prototype",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "4323", "--directory", "prototype/f3"],
+      "port": 4323
+    },
+    {
       "name": "app",
       "runtimeExecutable": "bash",
-      "runtimeArgs": ["-lc", "GCP_PROJECT=gcpdemo-zackshioi GCP_LOCATION=us-central1 uv run uvicorn app.main:app --reload --port 8080"],
+      "runtimeArgs": ["-lc", "GCP_PROJECT=gcpdemo-zackshioi GCP_LOCATION=us-central1 AGENT_ENGINE_ID=projects/1079899377320/locations/us-central1/reasoningEngines/6351899014627065856 uv run uvicorn app.main:app --reload --port 8080"],
       "port": 8080
     }
   ]

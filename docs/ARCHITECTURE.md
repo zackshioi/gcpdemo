@@ -1,8 +1,8 @@
 # Architecture
 
 > Kept in sync with the code. Updated as step (7) of every feature.
-> Current state: **F2 — short-term memory live** (Firestore session history,
-> multi-turn). No long-term memory yet.
+> Current state: **F3 — long-term memory live** (Memory Bank, user-scoped,
+> cross-session). Short + long-term both working.
 
 ## Components (target)
 | Component | Tech | Region | Status |
@@ -10,7 +10,7 @@
 | Web app | FastAPI on Cloud Run (`min-instances=0`) | us-central1 | F0 (local only) |
 | LLM | Gemini 2.5 Flash via `google-genai` (Vertex) | us-central1 | F1 (done) |
 | Short-term memory | Firestore (Native) | us-central1 | F2 (done) |
-| Long-term memory | Agent Engine — Memory Bank | us-central1 | F3 |
+| Long-term memory | Agent Engine — Memory Bank (vertexai SDK) | us-central1 | F3 (done) |
 | Tracing | Self-hosted Langfuse | — | F5 |
 | CICD | GitHub Actions + WIF: `infra.yml` (terraform) + `deploy.yml` (build/deploy) | — | F6 (done, brought forward) |
 | Hosting | Cloud Run `memorychat` (public) | us-central1 | F6 (done) |
@@ -26,7 +26,7 @@
 | `main.py` | FastAPI app, route handlers, request orchestration | F0 |
 | `gemini.py` | google-genai client; single `chat()` call | F1 (done) |
 | `short_term.py` | Firestore read/write/delete of session history | F2 (done) |
-| `long_term.py` | Memory Bank `generate` / `retrieve` | F3 |
+| `long_term.py` | Memory Bank `generate` / `retrieve` (vertexai SDK) | F3 (done) |
 | `tracing.py` | Langfuse client + span helpers | F5 |
 | `static/index.html` | Entire frontend (HTML + fetch) | F0 |
 
@@ -39,16 +39,20 @@
 6. Fire-and-forget `generate_memories` for this turn.
 7. Return `{reply}`. Entire turn = one Langfuse trace.
 
-## Current lifecycle (F2)
-- `GET /` -> serves `static/index.html` (chat UI with session sidebar).
+## Current lifecycle (F3)
+- `GET /` -> serves `static/index.html` (sidebar with user_id + sessions).
 - `GET /health` -> `{"status": "ok"}` (liveness; NOT `/healthz` — Google's
   Front End intercepts `/healthz` on *.run.app).
-- `POST /chat` `{session_id, message}` -> `{reply}`: persist user turn ->
-  load full session history from Firestore -> `gemini.generate(history)`
-  (multi-turn) -> persist model turn. Errors surface as HTTP 502.
-- `GET /sessions/{id}` -> `{messages}` (load / switch session).
-- `DELETE /sessions/{id}` -> delete session + messages (sidebar delete).
+- `POST /chat` `{user_id, session_id, message}` -> `{reply}`:
+  1. persist user turn (Firestore, short-term)
+  2. `long_term.retrieve(user_id)` from Memory Bank
+  3. `gemini.generate(history, memories)` — memories injected as system prompt
+  4. persist model turn
+  5. background: `long_term.generate(user_id, turn)` — async extraction
+- `GET /sessions/{id}` -> `{messages}`; `DELETE /sessions/{id}`.
 - `GET /static/*` -> static assets.
 
-Frontend keeps only the session list (id + label) in localStorage; message
-history is always fetched from Firestore (server is the source of truth).
+Frontend keeps only the per-user session list in localStorage; transcripts come
+from Firestore. Long-term memory is keyed by user_id only, so it spans sessions
+and browsers. AGENT_ENGINE_ID (the Agent Engine resource) is passed via env;
+long-term degrades gracefully (no-op) if it's unset.

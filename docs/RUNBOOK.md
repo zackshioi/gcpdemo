@@ -55,6 +55,20 @@ terraform init && terraform apply        # creates <project>-tfstate
 # 2. Add the `backend "gcs"` block to versions.tf, then migrate:
 terraform init -migrate-state            # copies local state into the bucket
 ```
+### Memory Bank Agent Engine (F3 — imperative, no TF resource)
+There is no Terraform resource for Agent Engine, so it's created once via SDK:
+```python
+import vertexai
+from vertexai._genai import types as t
+c = vertexai.Client(project="gcpdemo-zackshioi", location="us-central1")
+ae = c.agent_engines.create(config=t.AgentEngineConfig(display_name="memorychat-memory"))
+print(ae.name)  # -> AGENT_ENGINE_ID
+```
+Current instance:
+`projects/1079899377320/locations/us-central1/reasoningEngines/6351899014627065856`
+Passed to the app via `AGENT_ENGINE_ID` (Terraform sets it on Cloud Run; local
+runs get it from `.claude/launch.json`).
+
 ### Provisioned environment (live)
 - Project: **`gcpdemo-zackshioi`** (ACTIVE, billing linked).
 - Region: **`us-central1`**.
@@ -66,7 +80,8 @@ Infra is built up incrementally, mirroring the app:
   artifactregistry, iamcredentials, cloudbuild, storage) + GCS remote-state
   backend.
 - **F2 (done)**: Firestore Native database in `us-central1` (`infra/firestore.tf`).
-- **F3**: Agent Engine instance (Memory Bank).
+- **F3 (done)**: Agent Engine instance (Memory Bank) — created out-of-band
+  (no TF resource). See below.
 - **F5**: self-hosted Langfuse resources.
 - **F6 (done, brought forward)**: Artifact Registry, Cloud Run service
   (`memorychat`, public), runtime + deployer SAs, WIF pool/provider.
@@ -96,7 +111,7 @@ Two keyless (WIF) workflows, scoped by path so they don't overlap:
 | `PORT` | uvicorn (Cloud Run injects it) | F0 |
 | `GCP_PROJECT` | google-genai / Firestore (`gcpdemo-zackshioi`) | F1 |
 | `GCP_LOCATION` | `us-central1` | F1 |
-| `AGENT_ENGINE_ID` | Memory Bank | F3 |
+| `AGENT_ENGINE_ID` | Memory Bank (Agent Engine resource name) | F3 |
 | `LANGFUSE_HOST` / `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | tracing | F5 |
 
 ## Demo script (for the interview)

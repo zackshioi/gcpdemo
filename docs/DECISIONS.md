@@ -44,6 +44,11 @@ Bank (`client.agent_engines.memories.*`); avoid the legacy `vertexai` /
 one client object is the cleanest thing to walk through. **Fallback:** if the
 unified Memory Bank path is unavailable/buggy in our region at F3, use the
 `vertexai` SDK for Memory Bank only (chat stays on google-genai).
+**Outcome (F3):** fallback taken — installed `google-genai 2.7.0` has no
+`agent_engines` API, so Memory Bank uses `vertexai.Client().agent_engines.memories`
+(`generate` / `retrieve` with `scope={"user_id": ...}`). Chat stays on google-genai.
+The Agent Engine instance is created out-of-band (no TF resource); its resource
+name is `AGENT_ENGINE_ID` (see RUNBOOK). Extraction is async (~15s).
 
 ## ADR-007 — Self-hosted Langfuse
 **Decision:** Self-host Langfuse on GCP rather than use Langfuse Cloud.
